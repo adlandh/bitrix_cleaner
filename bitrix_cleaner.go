@@ -62,14 +62,13 @@ func processDir(dir string, all bool, done chan<- struct{}) {
 		fmt.Fprintln(os.Stderr,"Error processing "+dir)
 	} else {
 		fmt.Println("Start processing "+dir)
-		filepathFunc:=func(path string, info os.FileInfo, err error) error {return err}
+
 		if all {
-			filepathFunc=processFile
+			err=filepath.Walk(dir,processFile)
 		} else {
-			filepathFunc=processExpiredFile
+			err=filepath.Walk(dir,processExpiredFile)
 		}
 
-		err=filepath.Walk(dir,filepathFunc)
 		if err != nil {
 			fmt.Fprintln(os.Stderr,err)
 			fmt.Fprintln(os.Stderr,"Error processing "+dir)
