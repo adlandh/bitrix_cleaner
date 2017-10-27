@@ -31,7 +31,7 @@ func main() {
 
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
 	flag.BoolVar(&all, "all", all, "Process all files (if not provided then the expired files will be processed only)")
-	flag.BoolVar(&test, "donotremove", test, "Do not remove files. Run for testing.")
+	flag.BoolVar(&test, "test", test, "Do not remove files. Run for testing.")
 	flag.Parse()
 	path = strings.TrimSuffix(path, string(os.PathSeparator))
 
