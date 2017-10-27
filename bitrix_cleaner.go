@@ -1,105 +1,129 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
-	"strings"
-	"runtime"
 	"path/filepath"
-	//"bufio"
+	"regexp"
+	"runtime"
+	"strconv"
+	"strings"
+	"time"
 )
-
-var  files chan string
 
 func main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	path,err:=os.Getwd()
-	all:=false
-	dirs:=[]string{"managed_cache","stack_cache","cache","html_pages"}
-	done:=make(chan error,len(dirs))
+	path, err := os.Getwd()
+	all := false
+	dirs := []string{"managed_cache", "stack_cache", "cache", "html_pages"}
+	done := make(chan struct{}, len(dirs))
 
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
-	flag.BoolVar(&all, "all", false,"Process all files (if not provided then the expired files will be processed only)")
+	flag.BoolVar(&all, "all", false, "Process all files (if not provided then the expired files will be processed only)")
 	flag.Parse()
 	path = strings.TrimSuffix(path, string(os.PathSeparator))
 
-	fileInfo, err := os.Stat(path + string(os.PathSeparator)+"bitrix")
+	fileInfo, err := os.Stat(path + string(os.PathSeparator) + "bitrix")
 	if err != nil {
 		if os.IsNotExist(err) {
 			if path == "" {
 				path = "Current directory"
 			}
-			done<-fmt.Errorf(path + " is not bitrix root. Use -h for help.")
+			fmt.Fprint(os.Stderr, path+" is not bitrix root. Use -h for help.")
 		} else if os.IsPermission(err) {
-			done<-fmt.Errorf("Permission denied.")
+			fmt.Fprint(os.Stderr, "Permission denied.")
 		}
 
 	} else if !fileInfo.IsDir() {
-		done<-fmt.Errorf(path + string(os.PathSeparator)+"bitrix is not directory.")
+		fmt.Fprint(os.Stderr, path+string(os.PathSeparator)+"bitrix is not directory.")
 	} else {
-		for _,dir := range dirs {
+		for _, dir := range dirs {
 			go processDir(path+string(os.PathSeparator)+"bitrix"+string(os.PathSeparator)+dir, all, done)
 		}
-	}
-
-	waitUntil(done,len(dirs))
-}
-
-
-func waitUntil(done <-chan error, len int) {
-	for i:=0; i < len; i++ {
-		err:=<-done
-		if err!= nil {
-			fmt.Fprintln(os.Stderr,err)
-			i = len
-		}
+		waitUntil(done, len(dirs))
 	}
 }
 
-func processDir(dir string, all bool, done chan<- error) {
-	_,err:=os.Stat(dir)
+func waitUntil(done <-chan struct{}, len int) {
+	for i := 0; i < len; i++ {
+		<-done
+	}
+}
+
+func processDir(dir string, all bool, done chan<- struct{}) {
+	_, err := os.Stat(dir)
 	if err != nil {
-		done<-fmt.Errorf("Error processing "+dir)
+		fmt.Fprintln(os.Stderr, "Error processing "+dir)
 	} else {
-		files = make(chan string)
-		fmt.Println("Start processing "+dir)
-		go processFiles(all)
-		err=filepath.Walk(dir,listFiles)
-		if err != nil {
-			done<-err
+		fmt.Println("Start processing " + dir)
+		if all {
+			err = filepath.Walk(dir, processFiles)
 		} else {
-			fmt.Println("Done processing "+dir)
-			done <- nil
+			err = filepath.Walk(dir, processExpiredFiles)
 		}
+
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		fmt.Println("Done processing " + dir)
+
+		done <- struct{}{}
 	}
 }
 
-func listFiles(path string, info os.FileInfo, err error) error {
-	if err == nil && !info.IsDir() && strings.HasSuffix(path,".php") {
-		files <- path
+func processFiles(path string, info os.FileInfo, err error) error {
+	if err == nil && !info.IsDir() && strings.HasSuffix(path, ".php") {
+		err := os.Remove(path)
+		if err != nil {
+			return err
+		}
 	}
 	return err
 }
 
-func processFiles(all bool) {
-	if all {
-		for file := range files {
-			os.Remove(file)
-		}
-	} else {
-		for file := range files {
-			/* file, err := os.Open(path)
+func processExpiredFiles(path string, info os.FileInfo, err error) error {
+	tmnow := time.Now().Unix()
+	if err == nil && !info.IsDir() && strings.HasSuffix(path, ".php") {
+		file, err := os.Open(path)
 		if err != nil {
 			return err
 		}
 		defer file.Close()
-		reader := bufio.NewReader(file) */
-		fmt.Println(file)
+		reader := bufio.NewReader(file)
+
+		regs := regexp.MustCompile(`dateexpire = '(\d+)'`)
+
+		for {
+			line, err := reader.ReadString('\n')
+
+			if err != nil {
+				if err != io.EOF {
+					fmt.Fprintln(os.Stderr, "failed to finish reading the file:", err)
+				}
+				break
+			}
+
+			match := regs.FindStringSubmatch(line)
+
+			if match != nil {
+				tm, err := strconv.Atoi(match[1])
+				if err == nil {
+					if int64(tm) < tmnow {
+						err := os.Remove(path)
+						if err != nil {
+							return err
+						}
+					}
+				}
+				break
+			}
+
 		}
-
 	}
-
+	return err
 }
