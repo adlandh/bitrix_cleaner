@@ -7,7 +7,10 @@ import (
 	"strings"
 	"runtime"
 	"path/filepath"
+	//"bufio"
 )
+
+var  files chan string
 
 func main() {
 
@@ -16,7 +19,7 @@ func main() {
 	path,err:=os.Getwd()
 	all:=false
 	dirs:=[]string{"managed_cache","stack_cache","cache","html_pages"}
-	done:=make(chan struct{},len(dirs))
+	done:=make(chan error,len(dirs))
 
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
 	flag.BoolVar(&all, "all", false,"Process all files (if not provided then the expired files will be processed only)")
@@ -29,67 +32,74 @@ func main() {
 			if path == "" {
 				path = "Current directory"
 			}
-			fmt.Fprintln(os.Stderr,path + " is not bitrix root. Use -h for help.")
-			os.Exit(1)
+			done<-fmt.Errorf(path + " is not bitrix root. Use -h for help.")
 		} else if os.IsPermission(err) {
-			fmt.Println("Permission denied.")
-			os.Exit(1)
+			done<-fmt.Errorf("Permission denied.")
 		}
 
 	} else if !fileInfo.IsDir() {
-		fmt.Fprintln(os.Stderr,path + string(os.PathSeparator)+"bitrix is not directory.")
-		os.Exit(1)
-	}
-
-	for _,dir := range dirs {
-		go processDir(path+string(os.PathSeparator)+"bitrix"+string(os.PathSeparator)+dir, all, done)
+		done<-fmt.Errorf(path + string(os.PathSeparator)+"bitrix is not directory.")
+	} else {
+		for _,dir := range dirs {
+			go processDir(path+string(os.PathSeparator)+"bitrix"+string(os.PathSeparator)+dir, all, done)
+		}
 	}
 
 	waitUntil(done,len(dirs))
-
 }
 
 
-func waitUntil(done <-chan struct{}, len int) {
-	for i := 0; i < len; i++ {
-		<-done
+func waitUntil(done <-chan error, len int) {
+	for i:=0; i < len; i++ {
+		err:=<-done
+		if err!= nil {
+			fmt.Fprintln(os.Stderr,err)
+			i = len
+		}
 	}
 }
 
-func processDir(dir string, all bool, done chan<- struct{}) {
+func processDir(dir string, all bool, done chan<- error) {
 	_,err:=os.Stat(dir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr,"Error processing "+dir)
+		done<-fmt.Errorf("Error processing "+dir)
 	} else {
+		files = make(chan string)
 		fmt.Println("Start processing "+dir)
-
-		if all {
-			err=filepath.Walk(dir,processFile)
-		} else {
-			err=filepath.Walk(dir,processExpiredFile)
-		}
-
+		go processFiles(all)
+		err=filepath.Walk(dir,listFiles)
 		if err != nil {
-			fmt.Fprintln(os.Stderr,err)
-			fmt.Fprintln(os.Stderr,"Error processing "+dir)
+			done<-err
 		} else {
 			fmt.Println("Done processing "+dir)
+			done <- nil
 		}
 	}
-	done <- struct{}{}
 }
 
-func processFile(path string, info os.FileInfo, err error) error {
-	if !info.IsDir() && strings.HasSuffix(path,".php") && err == nil {
-		return os.Remove(path)
-	} else {
-		return err
+func listFiles(path string, info os.FileInfo, err error) error {
+	if err == nil && !info.IsDir() && strings.HasSuffix(path,".php") {
+		files <- path
 	}
+	return err
 }
 
-func processExpiredFile(path string, info os.FileInfo, err error) error {
-	fmt.Println(path)
-	fmt.Println(info.Size())
-	fmt.Println(info.IsDir())
-	return err
+func processFiles(all bool) {
+	if all {
+		for file := range files {
+			os.Remove(file)
+		}
+	} else {
+		for file := range files {
+			/* file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		reader := bufio.NewReader(file) */
+		fmt.Println(file)
+		}
+
+	}
+
 }
