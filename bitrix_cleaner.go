@@ -19,7 +19,7 @@ func main() {
 	done:=make(chan struct{},len(dirs))
 
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
-	flag.BoolVar(&all, "all", false,"Process all files (if not provided then only expired will be processed)")
+	flag.BoolVar(&all, "all", false,"Process all files (if not provided then the expired files will be processed only)")
 	flag.Parse()
 	path = strings.TrimSuffix(path, string(os.PathSeparator))
 
