@@ -13,17 +13,17 @@ func main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	path:="."
+	path,err:=os.Getwd()
 	all:=false
-	dirs:=[]string{"managed_cache","stack_cache","cache",`html_pages`}
+	dirs:=[]string{"managed_cache","stack_cache","cache","html_pages"}
 	done:=make(chan struct{},len(dirs))
 
-	flag.StringVar(&path, "path", ".", "Path to bitrix root")
-	flag.BoolVar(&all, "all", false,"all files (if not provided then only expired will be processed)")
+	flag.StringVar(&path, "path", path, "Path to bitrix root")
+	flag.BoolVar(&all, "all", false,"Process all files (if not provided then only expired will be processed)")
 	flag.Parse()
-	path = strings.TrimSuffix(path, "/")
+	path = strings.TrimSuffix(path, string(os.PathSeparator))
 
-	fileInfo, err := os.Stat(path + "/bitrix")
+	fileInfo, err := os.Stat(path + string(os.PathSeparator)+"bitrix")
 	if err != nil {
 		if os.IsNotExist(err) {
 			if path == "" {
@@ -32,17 +32,17 @@ func main() {
 			fmt.Println(path + " is not bitrix root. Use -h for help.")
 			os.Exit(1)
 		} else if os.IsPermission(err) {
-			fmt.Println("Permission error")
+			fmt.Println("Permission denied.")
 			os.Exit(1)
 		}
 
 	} else if !fileInfo.IsDir() {
-		fmt.Println(path + "/bitrix is not directory.")
+		fmt.Println(path + string(os.PathSeparator)+"bitrix is not directory.")
 		os.Exit(1)
 	}
 
 	for _,dir := range dirs {
-		go processDir(path+"/bitrix/"+dir, all, done)
+		go processDir(path+string(os.PathSeparator)+"bitrix"+string(os.PathSeparator)+dir, all, done)
 	}
 
 	fmt.Println(all)
@@ -64,8 +64,7 @@ func processDir(dir string, all bool, done chan<- struct{}) {
 		fmt.Println("Error processing "+dir)
 	} else {
 		if all {
-			os.RemoveAll(dir)
-			os.Mkdir(dir,0755)
+			filepath.Walk(dir,processFile)
 		} else {
 			filepath.Walk(dir,processExpiredFile)
 		}
@@ -76,12 +75,12 @@ func processDir(dir string, all bool, done chan<- struct{}) {
 	done <- struct{}{}
 }
 
-/* func processFile(path string, info os.FileInfo, err error) error {
+func processFile(path string, info os.FileInfo, err error) error {
 	fmt.Println(path)
 	fmt.Println(info.Size())
 	fmt.Println(info.IsDir())
 	return err
-} */
+}
 
 func processExpiredFile(path string, info os.FileInfo, err error) error {
 	fmt.Println(path)
