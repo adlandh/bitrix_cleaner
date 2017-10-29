@@ -95,7 +95,8 @@ func processDir(dir string) {
 }
 
 func processFiles(path string, info os.FileInfo, err error) error {
-	if err == nil && !info.IsDir() && (strings.HasSuffix(path, ".php") || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".css") || strings.HasSuffix(path, ".js")) {
+	if err == nil && !info.IsDir() && (strings.HasSuffix(path, ".php") || strings.HasSuffix(path, ".html") ||
+		strings.HasSuffix(path, ".css") || strings.HasSuffix(path, ".js")) {
 		if test {
 			fmt.Println("Removing " + path)
 		} else {
@@ -137,7 +138,7 @@ func processExpiredFile(path string) error {
 		match := regs.FindStringSubmatch(line)
 
 		if match != nil {
-			tm, err := strconv.ParseInt(match[1],10,0)
+			tm, err := strconv.ParseInt(match[1], 10, 0)
 			if err == nil {
 				if int64(tm) < tmNow {
 					if test {
