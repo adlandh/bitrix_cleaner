@@ -18,7 +18,6 @@ var all = false
 var test = false
 var done chan struct{}
 
-
 func main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -26,8 +25,8 @@ func main() {
 	path, err := os.Getwd()
 	all = false
 	test = false
-	dirs := []string{"managed_cache", "stack_cache", "cache", "html_pages"}
-	done = make(chan struct{}, len(dirs))
+	dirsExp := []string{"managed_cache", "stack_cache", "cache"}
+	dirsAll := []string{"managed_cache", "stack_cache", "cache", "html_pages"}
 
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
 	flag.BoolVar(&all, "all", all, "Process all files (if not provided then the expired files will be processed only)")
@@ -49,8 +48,15 @@ func main() {
 	} else if !fileInfo.IsDir() {
 		fmt.Fprint(os.Stderr, path+string(os.PathSeparator)+"bitrix is not directory.")
 	} else {
+		dirs := dirsExp
+		if all {
+			dirs = dirsAll
+		}
+
+		done = make(chan struct{}, len(dirs))
+
 		for _, dir := range dirs {
-			go processDir(path+string(os.PathSeparator)+"bitrix"+string(os.PathSeparator)+dir)
+			go processDir(path + string(os.PathSeparator) + "bitrix" + string(os.PathSeparator) + dir)
 		}
 		waitUntil(done, len(dirs))
 	}
@@ -84,9 +90,9 @@ func processDir(dir string) {
 }
 
 func processFiles(path string, info os.FileInfo, err error) error {
-	if err == nil && !info.IsDir() && strings.HasSuffix(path, ".php") {
+	if err == nil && !info.IsDir() && (strings.HasSuffix(path, ".php") || strings.HasSuffix(path, ".html")) {
 		if test {
-			fmt.Println("Removing "+path)
+			fmt.Println("Removing " + path)
 		} else {
 			err := os.Remove(path)
 			if err != nil {
@@ -126,7 +132,7 @@ func processExpiredFiles(path string, info os.FileInfo, err error) error {
 				if err == nil {
 					if int64(tm) < tmnow {
 						if test {
-							fmt.Println("Removing "+path)
+							fmt.Println("Removing " + path)
 						} else {
 							err := os.Remove(path)
 							if err != nil {
