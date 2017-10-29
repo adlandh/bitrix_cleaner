@@ -17,6 +17,8 @@ import (
 var all = false
 var test = false
 var done chan struct{}
+var regs *regexp.Regexp
+var tmNow int64
 
 func main() {
 
@@ -27,6 +29,8 @@ func main() {
 	test = false
 	dirsExp := []string{"managed_cache", "stack_cache", "cache"}
 	dirsAll := []string{"managed_cache", "stack_cache", "cache", "html_pages"}
+	regs = regexp.MustCompile(`dateexpire = '(\d+)'`)
+	tmNow = time.Now().Unix()
 
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
 	flag.BoolVar(&all, "all", all, "Process all files (if not provided then the expired files will be processed only)")
@@ -40,13 +44,13 @@ func main() {
 			if path == "" {
 				path = "Current directory"
 			}
-			fmt.Fprint(os.Stderr, path+" is not bitrix root. Use -h for help.")
+			fmt.Fprintln(os.Stderr, path+" is not bitrix root. Use -h for help.")
 		} else if os.IsPermission(err) {
-			fmt.Fprint(os.Stderr, "Permission denied.")
+			fmt.Fprintln(os.Stderr, "Permission denied.")
 		}
 
 	} else if !fileInfo.IsDir() {
-		fmt.Fprint(os.Stderr, path+string(os.PathSeparator)+"bitrix is not directory.")
+		fmt.Fprintln(os.Stderr, path+string(os.PathSeparator)+"bitrix is not directory.")
 	} else {
 		dirs := dirsExp
 		if all {
@@ -105,47 +109,50 @@ func processFiles(path string, info os.FileInfo, err error) error {
 }
 
 func processExpiredFiles(path string, info os.FileInfo, err error) error {
-	tmnow := time.Now().Unix()
 	if err == nil && !info.IsDir() && strings.HasSuffix(path, ".php") {
-		file, err := os.Open(path)
+		return processExpiredFile(path)
+	}
+	return err
+}
+
+func processExpiredFile(path string) error {
+
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	reader := bufio.NewReader(file)
+
+	for {
+		line, err := reader.ReadString('\n')
+
 		if err != nil {
-			return err
-		}
-		defer file.Close()
-		reader := bufio.NewReader(file)
-
-		regs := regexp.MustCompile(`dateexpire = '(\d+)'`)
-
-		for {
-			line, err := reader.ReadString('\n')
-
-			if err != nil {
-				if err != io.EOF {
-					fmt.Fprintln(os.Stderr, "failed to finish reading the file:", err)
-				}
-				break
+			if err != io.EOF {
+				fmt.Fprintln(os.Stderr, "failed to finish reading the file:", err)
 			}
+			break
+		}
 
-			match := regs.FindStringSubmatch(line)
+		match := regs.FindStringSubmatch(line)
 
-			if match != nil {
-				tm, err := strconv.Atoi(match[1])
-				if err == nil {
-					if int64(tm) < tmnow {
-						if test {
-							fmt.Println("Removing " + path)
-						} else {
-							err := os.Remove(path)
-							if err != nil {
-								return err
-							}
+		if match != nil {
+			tm, err := strconv.ParseInt(match[1],10,0)
+			if err == nil {
+				if int64(tm) < tmNow {
+					if test {
+						fmt.Println("Removing " + path)
+					} else {
+						err := os.Remove(path)
+						if err != nil {
+							return err
 						}
 					}
 				}
-				break
 			}
-
+			break
 		}
+
 	}
-	return err
+	return nil
 }
