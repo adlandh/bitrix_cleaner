@@ -84,9 +84,10 @@ func processDir(dir string) {
 			fmt.Fprintln(os.Stderr, err)
 		}
 		fmt.Println("Done processing " + dir)
-
-		done <- struct{}{}
 	}
+
+	done <- struct{}{}
+
 }
 
 func processFiles(path string, info os.FileInfo, err error) error {
