@@ -105,6 +105,9 @@ func processFiles(path string, info os.FileInfo, err error) error {
 				return err
 			}
 		}
+	} else if os.IsNotExist(err){
+		fmt.Fprintln(os.Stderr, err)
+		return nil
 	}
 	return err
 }
@@ -112,6 +115,9 @@ func processFiles(path string, info os.FileInfo, err error) error {
 func processExpiredFiles(path string, info os.FileInfo, err error) error {
 	if err == nil && !info.IsDir() && strings.HasSuffix(path, ".php") {
 		return processExpiredFile(path)
+	} else if os.IsNotExist(err){
+		fmt.Fprintln(os.Stderr, err)
+		return nil
 	}
 	return err
 }
