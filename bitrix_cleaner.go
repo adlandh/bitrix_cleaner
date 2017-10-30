@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"io/ioutil"
 )
 
 var all = false
