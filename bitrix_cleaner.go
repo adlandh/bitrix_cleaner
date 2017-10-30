@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"io/ioutil"
 )
 
 var all = false
@@ -133,10 +134,13 @@ func processExpiredFile(path string) error {
 		return err
 	}
 	defer file.Close()
+
 	reader := bufio.NewReader(file)
+	lineNo := 0
 
 	for {
 		line, err := reader.ReadString('\n')
+		lineNo++
 
 		if err != nil {
 			if err != io.EOF {
@@ -145,26 +149,27 @@ func processExpiredFile(path string) error {
 			break
 		}
 
-		match := regs.FindStringSubmatch(line)
+		if lineNo==4 {
+			match := regs.FindStringSubmatch(line)
 
-		if match != nil {
-			tm, err := strconv.ParseInt(match[1], 10, 0)
-			if err == nil {
-				if tm < tmNow {
-					if test {
-						fmt.Println("Removing " + path)
-					} else {
-						err := os.Remove(path)
-						if err != nil {
-							return err
+			if match != nil {
+				tm, err := strconv.ParseInt(match[1], 10, 0)
+				if err == nil {
+					if tm < tmNow {
+						if test {
+							fmt.Println("Removing " + path)
+						} else {
+							err := os.Remove(path)
+							if err != nil {
+								return err
+							}
+							removed++
 						}
-						removed++
 					}
 				}
+				break
 			}
-			break
 		}
-
 	}
 	return nil
 }
