@@ -33,6 +33,8 @@ func main() {
 	regs = regexp.MustCompile(`dateexpire = '(\d+)'`)
 	tmNow = time.Now().Unix()
 
+	defer fmt.Printf("Removed %d files.\n",removed)
+
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
 	flag.BoolVar(&all, "all", all, "Process all files (if not provided then the expired files will be processed only)")
 	flag.BoolVar(&test, "test", test, "Do not remove files. Run for testing.")
@@ -71,7 +73,6 @@ func waitUntil(done <-chan struct{}, len int) {
 	for i := 0; i < len; i++ {
 		<-done
 	}
-	fmt.Printf("Removed %d files.\n",removed)
 }
 
 func processDir(dir string) {
