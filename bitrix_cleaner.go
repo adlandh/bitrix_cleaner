@@ -140,7 +140,7 @@ func processExpiredFile(path string) error {
 		if match != nil {
 			tm, err := strconv.ParseInt(match[1], 10, 0)
 			if err == nil {
-				if int64(tm) < tmNow {
+				if tm < tmNow {
 					if test {
 						fmt.Println("Removing " + path)
 					} else {
