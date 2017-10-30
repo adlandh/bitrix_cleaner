@@ -19,6 +19,7 @@ var test = false
 var done chan struct{}
 var regs *regexp.Regexp
 var tmNow int64
+var removed int
 
 func main() {
 
@@ -70,6 +71,7 @@ func waitUntil(done <-chan struct{}, len int) {
 	for i := 0; i < len; i++ {
 		<-done
 	}
+	fmt.Printf("Removed %d files.\n",removed)
 }
 
 func processDir(dir string) {
@@ -104,6 +106,7 @@ func processFiles(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
+			removed++
 		}
 	} else if os.IsNotExist(err){
 		fmt.Fprintln(os.Stderr, err)
@@ -154,6 +157,7 @@ func processExpiredFile(path string) error {
 						if err != nil {
 							return err
 						}
+						removed++
 					}
 				}
 			}
