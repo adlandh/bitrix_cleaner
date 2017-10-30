@@ -2,17 +2,18 @@
 Bitrix File Cache Cleaner / Очистка файлового кэша Битрикс 
 
 
-Usage:
+Usage / Использование:
 
-  -all \
-  Process all files (if not provided then the expired files will be processed only)
+  -all  
+  Process all files (if not provided then the expired files will be processed only) / 
+  Обрабатывать все файлы кэша (если не указано - обрабатывать только устаревшие)
     	
-  -path string \
-  Path to bitrix root (default current directory)
+  -path string   
+  Path to bitrix root (default: current directory) / Путь к корневому каталогу битрикс (по-умолчанию: текущий каталог)
     	
-  -test \
-  Do not remove files. Run for testing.
+  -test   
+  Do not remove files. Run for testing. / Не удалять файлы. Запуск для тестирования 
     	
-  -h \
-  Help
+  -h   
+  Help / Помощь
       
