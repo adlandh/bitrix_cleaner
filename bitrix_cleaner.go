@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,7 +20,27 @@ var test = false
 var done chan struct{}
 var regs *regexp.Regexp
 var tmNow int64
-var removed int
+
+type countRemoved struct {
+	counter int
+	mutex   *sync.RWMutex
+}
+
+func NewCounter() *countRemoved {
+	return &countRemoved{0, new(sync.RWMutex)}
+}
+
+func (cnt *countRemoved) Increment() {
+	cnt.mutex.Lock()
+	defer cnt.mutex.Unlock()
+	cnt.counter++
+}
+
+func (cnt *countRemoved) Get() int {
+	return cnt.counter
+}
+
+var counter *countRemoved
 
 func main() {
 
@@ -32,6 +53,7 @@ func main() {
 	dirsAll := []string{"managed_cache", "stack_cache", "cache", "html_pages"}
 	regs = regexp.MustCompile(`dateexpire = '(\d+)'`)
 	tmNow = time.Now().Unix()
+	counter = NewCounter()
 
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
 	flag.BoolVar(&all, "all", all, "Process all files (if not provided then the expired files will be processed only)")
@@ -64,7 +86,7 @@ func main() {
 			go processDir(path + string(os.PathSeparator) + "bitrix" + string(os.PathSeparator) + dir)
 		}
 		waitUntil(done, len(dirs))
-		fmt.Printf("Removed %d files.\n", removed)
+		fmt.Printf("Removed %d files.\n", counter.Get())
 	}
 }
 
@@ -106,7 +128,7 @@ func processFiles(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
-			removed++
+			counter.Increment()
 		}
 	} else if os.IsNotExist(err) {
 		return nil
@@ -159,7 +181,7 @@ func processExpiredFile(path string) error {
 							if err != nil {
 								return err
 							}
-							removed++
+							counter.Increment()
 						}
 					}
 				}
