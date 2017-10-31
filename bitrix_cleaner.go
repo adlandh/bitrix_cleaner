@@ -33,8 +33,6 @@ func main() {
 	regs = regexp.MustCompile(`dateexpire = '(\d+)'`)
 	tmNow = time.Now().Unix()
 
-	defer fmt.Printf("Removed %d files.\n", removed)
-
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
 	flag.BoolVar(&all, "all", all, "Process all files (if not provided then the expired files will be processed only)")
 	flag.BoolVar(&test, "test", test, "Do not remove files. Run for testing.")
@@ -66,6 +64,7 @@ func main() {
 			go processDir(path + string(os.PathSeparator) + "bitrix" + string(os.PathSeparator) + dir)
 		}
 		waitUntil(done, len(dirs))
+		fmt.Printf("Removed %d files.\n", removed)
 	}
 }
 
@@ -110,7 +109,6 @@ func processFiles(path string, info os.FileInfo, err error) error {
 			removed++
 		}
 	} else if os.IsNotExist(err) {
-		fmt.Fprintln(os.Stderr, err)
 		return nil
 	}
 	return err
@@ -120,7 +118,6 @@ func processExpiredFiles(path string, info os.FileInfo, err error) error {
 	if err == nil && !info.IsDir() && strings.HasSuffix(path, ".php") {
 		return processExpiredFile(path)
 	} else if os.IsNotExist(err) {
-		fmt.Fprintln(os.Stderr, err)
 		return nil
 	}
 	return err
