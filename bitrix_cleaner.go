@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/stretchr/powerwalk"
 	"io"
 	"os"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -15,45 +15,138 @@ import (
 	"time"
 )
 
-var all = false
-var test = false
-var done chan struct{}
-var regs *regexp.Regexp
-var tmNow int64
-
-type countRemoved struct {
+type cleaningPath struct {
+	dir     string
 	counter int
 	mutex   *sync.RWMutex
+	regs    *regexp.Regexp
+	done    chan<- int
+	all     bool
+	test    bool
+	tmNow   int64
 }
 
-func NewCounter() *countRemoved {
-	return &countRemoved{0, new(sync.RWMutex)}
+func NewCleaningPath(dir string, done chan<- int, all bool, test bool) *cleaningPath {
+	return &cleaningPath{dir, 0, new(sync.RWMutex),
+		regexp.MustCompile(`dateexpire = '(\d+)'`), done, all, test, time.Now().Unix()}
 }
 
-func (cnt *countRemoved) Increment() {
-	cnt.mutex.Lock()
-	defer cnt.mutex.Unlock()
-	cnt.counter++
+func (cp *cleaningPath) incCounter() {
+	cp.mutex.Lock()
+	defer cp.mutex.Unlock()
+	cp.counter++
 }
 
-func (cnt *countRemoved) Get() int {
-	return cnt.counter
+func (cp *cleaningPath) GetCounter() int {
+	return cp.counter
 }
 
-var counter *countRemoved
+func (cp *cleaningPath) ProcessDir() {
+	go func() {
+		_, err := os.Stat(cp.dir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error processing "+cp.dir)
+		} else {
+			fmt.Println("Start processing " + cp.dir)
+			if cp.all {
+				err = powerwalk.Walk(cp.dir, cp.processFiles)
+			} else {
+				err = powerwalk.Walk(cp.dir, cp.processExpiredFiles)
+			}
+
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
+			fmt.Printf("Done processing %s. Removed %d files.\n", cp.dir, cp.counter)
+		}
+
+		cp.done <- cp.counter
+	}()
+}
+
+func (cp *cleaningPath) processFiles(path string, info os.FileInfo, err error) error {
+	if err == nil && (info.Mode()&os.ModeType == 0) && (strings.HasSuffix(path, ".php") ||
+		strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".css") || strings.HasSuffix(path, ".js")) {
+		if cp.test {
+			fmt.Println("Removing " + path)
+		} else {
+			err := os.Remove(path)
+			if err != nil {
+				return err
+			}
+		}
+		cp.incCounter()
+	} else if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func (cp *cleaningPath) processExpiredFiles(path string, info os.FileInfo, err error) error {
+	if err == nil && (info.Mode()&os.ModeType == 0) && info.Size() > 100 && strings.HasSuffix(path, ".php") {
+		return cp.processExpiredFile(path)
+	} else if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func (cp *cleaningPath) processExpiredFile(path string) error {
+
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	lineNo := 0
+
+	for {
+		line, err := reader.ReadString('\n')
+		lineNo++
+
+		if err != nil {
+			if err != io.EOF {
+				fmt.Fprintln(os.Stderr, "failed to finish reading the file:", err)
+			}
+			break
+		}
+
+		if lineNo == 4 {
+			match := cp.regs.FindStringSubmatch(line)
+
+			if match != nil {
+				tm, err := strconv.ParseInt(match[1], 10, 0)
+				if err == nil {
+					if tm < cp.tmNow {
+						if cp.test {
+							fmt.Println("Removing " + path)
+						} else {
+							err := os.Remove(path)
+							if err != nil {
+								return err
+							}
+						}
+						cp.incCounter()
+					}
+				}
+				break
+			}
+		}
+	}
+	return nil
+}
 
 func main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	path, err := os.Getwd()
-	all = false
-	test = false
+	all := false
+	test := false
 	dirsExp := []string{"managed_cache", "stack_cache", "cache"}
 	dirsAll := []string{"managed_cache", "stack_cache", "cache", "html_pages"}
-	regs = regexp.MustCompile(`dateexpire = '(\d+)'`)
-	tmNow = time.Now().Unix()
-	counter = NewCounter()
 
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
 	flag.BoolVar(&all, "all", all, "Process all files (if not provided then the expired files will be processed only)")
@@ -80,114 +173,20 @@ func main() {
 			dirs = dirsAll
 		}
 
-		done = make(chan struct{}, len(dirs))
+		done := make(chan int, len(dirs))
 
 		for _, dir := range dirs {
-			go processDir(path + string(os.PathSeparator) + "bitrix" + string(os.PathSeparator) + dir)
+			prc := NewCleaningPath(path+string(os.PathSeparator)+"bitrix"+string(os.PathSeparator)+dir, done, all, test)
+			prc.ProcessDir()
 		}
 		waitUntil(done, len(dirs))
-		fmt.Printf("Removed %d files.\n", counter.Get())
 	}
 }
 
-func waitUntil(done <-chan struct{}, len int) {
+func waitUntil(done <-chan int, len int) {
+	realCounter := 0
 	for i := 0; i < len; i++ {
-		<-done
+		realCounter = realCounter + (<-done)
 	}
-}
-
-func processDir(dir string) {
-	_, err := os.Stat(dir)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error processing "+dir)
-	} else {
-		fmt.Println("Start processing " + dir)
-		if all {
-			err = filepath.Walk(dir, processFiles)
-		} else {
-			err = filepath.Walk(dir, processExpiredFiles)
-		}
-
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-		}
-		fmt.Println("Done processing " + dir)
-	}
-
-	done <- struct{}{}
-
-}
-
-func processFiles(path string, info os.FileInfo, err error) error {
-	if err == nil && !info.IsDir() && (strings.HasSuffix(path, ".php") || strings.HasSuffix(path, ".html") ||
-		strings.HasSuffix(path, ".css") || strings.HasSuffix(path, ".js")) {
-		if test {
-			fmt.Println("Removing " + path)
-		} else {
-			err := os.Remove(path)
-			if err != nil {
-				return err
-			}
-			counter.Increment()
-		}
-	} else if os.IsNotExist(err) {
-		return nil
-	}
-	return err
-}
-
-func processExpiredFiles(path string, info os.FileInfo, err error) error {
-	if err == nil && !info.IsDir() && strings.HasSuffix(path, ".php") {
-		return processExpiredFile(path)
-	} else if os.IsNotExist(err) {
-		return nil
-	}
-	return err
-}
-
-func processExpiredFile(path string) error {
-
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	reader := bufio.NewReader(file)
-	lineNo := 0
-
-	for {
-		line, err := reader.ReadString('\n')
-		lineNo++
-
-		if err != nil {
-			if err != io.EOF {
-				fmt.Fprintln(os.Stderr, "failed to finish reading the file:", err)
-			}
-			break
-		}
-
-		if lineNo == 4 {
-			match := regs.FindStringSubmatch(line)
-
-			if match != nil {
-				tm, err := strconv.ParseInt(match[1], 10, 0)
-				if err == nil {
-					if tm < tmNow {
-						if test {
-							fmt.Println("Removing " + path)
-						} else {
-							err := os.Remove(path)
-							if err != nil {
-								return err
-							}
-							counter.Increment()
-						}
-					}
-				}
-				break
-			}
-		}
-	}
-	return nil
+	fmt.Printf("Total removed %d files.\n", realCounter)
 }
