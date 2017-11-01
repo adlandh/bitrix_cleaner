@@ -82,7 +82,7 @@ func (cp *cleaningPath) processFiles(path string, info os.FileInfo, err error) e
 			}
 		}
 		cp.incCounter()
-	} else if os.IsNotExist(err) {
+	} else if os.IsNotExist(err) || cp.ignore {
 		return nil
 	}
 	return err
@@ -91,7 +91,7 @@ func (cp *cleaningPath) processFiles(path string, info os.FileInfo, err error) e
 func (cp *cleaningPath) processExpiredFiles(path string, info os.FileInfo, err error) error {
 	if err == nil && (info.Mode()&os.ModeType == 0) && info.Size() > 100 && strings.HasSuffix(path, ".php") {
 		return cp.processExpiredFile(path)
-	} else if os.IsNotExist(err) {
+	} else if os.IsNotExist(err) || cp.ignore {
 		return nil
 	}
 	return err
