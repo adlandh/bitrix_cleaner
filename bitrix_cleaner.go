@@ -170,9 +170,6 @@ func main() {
 	fileInfo, err := os.Stat(path + string(os.PathSeparator) + "bitrix")
 	if err != nil {
 		if os.IsNotExist(err) {
-			if path == "" {
-				path = "Current directory"
-			}
 			fmt.Fprintln(os.Stderr, path+" is not bitrix root. Use -h for help.")
 		} else if os.IsPermission(err) {
 			fmt.Fprintln(os.Stderr, "Permission denied.")
