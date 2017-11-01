@@ -23,12 +23,13 @@ type cleaningPath struct {
 	done    chan<- int
 	all     bool
 	test    bool
+	ignore  bool
 	tmNow   int64
 }
 
-func NewCleaningPath(dir string, done chan<- int, all bool, test bool) *cleaningPath {
+func NewCleaningPath(dir string, done chan<- int, all bool, test bool, ignore bool) *cleaningPath {
 	return &cleaningPath{dir, 0, new(sync.RWMutex),
-		regexp.MustCompile(`dateexpire = '(\d+)'`), done, all, test, time.Now().Unix()}
+		regexp.MustCompile(`dateexpire = '(\d+)'`), done, all, test, ignore, time.Now().Unix()}
 }
 
 func (cp *cleaningPath) incCounter() {
@@ -54,7 +55,7 @@ func (cp *cleaningPath) ProcessDir() {
 				err = powerwalk.Walk(cp.dir, cp.processExpiredFiles)
 			}
 
-			if err != nil {
+			if err != nil && !cp.ignore {
 				fmt.Fprintln(os.Stderr, err)
 			}
 			fmt.Printf("Done processing %s. Removed %d files.\n", cp.dir, cp.counter)
@@ -72,7 +73,12 @@ func (cp *cleaningPath) processFiles(path string, info os.FileInfo, err error) e
 		} else {
 			err := os.Remove(path)
 			if err != nil {
-				return err
+				if cp.ignore {
+					fmt.Fprintln(os.Stderr, err)
+					return nil
+				} else {
+					return err
+				}
 			}
 		}
 		cp.incCounter()
@@ -125,7 +131,12 @@ func (cp *cleaningPath) processExpiredFile(path string) error {
 						} else {
 							err := os.Remove(path)
 							if err != nil {
-								return err
+								if cp.ignore {
+									fmt.Fprintln(os.Stderr, err)
+									return nil
+								} else {
+									return err
+								}
 							}
 						}
 						cp.incCounter()
@@ -145,12 +156,14 @@ func main() {
 	path, err := os.Getwd()
 	all := false
 	test := false
+	ignore := false
 	dirsExp := []string{"managed_cache", "stack_cache", "cache"}
 	dirsAll := []string{"managed_cache", "stack_cache", "cache", "html_pages"}
 
 	flag.StringVar(&path, "path", path, "Path to bitrix root")
 	flag.BoolVar(&all, "all", all, "Process all files (if not provided then the expired files will be processed only)")
-	flag.BoolVar(&test, "test", test, "Do not remove files. Run for testing.")
+	flag.BoolVar(&test, "test", test, "Do not remove files. Run for testing")
+	flag.BoolVar(&ignore, "ignore", ignore, "Do not stop processing on errors")
 	flag.Parse()
 	path = strings.TrimSuffix(path, string(os.PathSeparator))
 
@@ -176,7 +189,7 @@ func main() {
 		done := make(chan int, len(dirs))
 
 		for _, dir := range dirs {
-			prc := NewCleaningPath(path+string(os.PathSeparator)+"bitrix"+string(os.PathSeparator)+dir, done, all, test)
+			prc := NewCleaningPath(path+string(os.PathSeparator)+"bitrix"+string(os.PathSeparator)+dir, done, all, test, ignore)
 			prc.ProcessDir()
 		}
 		waitUntil(done, len(dirs))
