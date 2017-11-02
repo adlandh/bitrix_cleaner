@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const ver = "1.2"
+
 type cleaningPath struct {
 	dir     string
 	counter int
@@ -24,12 +26,11 @@ type cleaningPath struct {
 	all     bool
 	test    bool
 	ignore  bool
-	tmNow   int64
 }
 
 func NewCleaningPath(dir string, done chan<- int, all bool, test bool, ignore bool) *cleaningPath {
 	return &cleaningPath{dir, 0, new(sync.RWMutex),
-		regexp.MustCompile(`dateexpire = '(\d+)'`), done, all, test, ignore, time.Now().Unix()}
+		regexp.MustCompile(`dateexpire = '(\d+)'`), done, all, test, ignore}
 }
 
 func (cp *cleaningPath) incCounter() {
@@ -125,7 +126,7 @@ func (cp *cleaningPath) processExpiredFile(path string) error {
 			if match != nil {
 				tm, err := strconv.ParseInt(match[1], 10, 0)
 				if err == nil {
-					if tm < cp.tmNow {
+					if tm < time.Now().Unix() {
 						if cp.test {
 							fmt.Println("Removing " + path)
 						} else {
@@ -157,6 +158,7 @@ func main() {
 	all := false
 	test := false
 	ignore := false
+	version := false
 	dirsExp := []string{"managed_cache", "stack_cache", "cache"}
 	dirsAll := []string{"managed_cache", "stack_cache", "cache", "html_pages"}
 
@@ -164,8 +166,14 @@ func main() {
 	flag.BoolVar(&all, "all", all, "Process all files (if not provided then the expired files will be processed only)")
 	flag.BoolVar(&test, "test", test, "Do not remove files. Run for testing")
 	flag.BoolVar(&ignore, "ignore", ignore, "Do not stop processing on errors")
+	flag.BoolVar(&version, "version", version, "Show version number and exit")
 	flag.Parse()
 	path = strings.TrimSuffix(path, string(os.PathSeparator))
+
+	if version {
+		fmt.Println("Version: " + ver)
+		os.Exit(0)
+	}
 
 	fileInfo, err := os.Stat(path + string(os.PathSeparator) + "bitrix")
 	if err != nil {
