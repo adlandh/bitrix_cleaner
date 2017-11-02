@@ -16,6 +16,9 @@ Usage / Использование:
   
   -ignore  
   Do not stop processing on errors / Не прекращать работу при возникновении ошибки  
+  
+  -version  
+  Show version number and exit / Показать номер версии и прекратить работу 
     	
   -h   
   Help / Помощь
